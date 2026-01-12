@@ -1,0 +1,1060 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+  <title>Robot Idle Shooter (MVP)</title>
+  <style>
+    :root{
+      --bg:#0b0f18; --panel:#121a2a; --panel2:#0f1626; --txt:#e8eefc; --muted:#a8b4d6;
+      --good:#39d98a; --warn:#ffcc66; --bad:#ff5d5d; --accent:#7aa7ff; --line:#23304d;
+    }
+    *{box-sizing:border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";}
+    body{margin:0; background:linear-gradient(180deg,#070a12, #0b0f18); color:var(--txt);}
+    .wrap{max-width:520px; margin:0 auto; padding:12px 12px 92px;}
+    .topbar{display:flex; gap:8px; align-items:center; justify-content:space-between; margin-bottom:10px;}
+    .chip{background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08); padding:8px 10px; border-radius:12px; color:var(--txt); font-size:12px;}
+    select, button{border-radius:12px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.06); color:var(--txt); padding:10px 12px; font-size:14px;}
+    button{cursor:pointer; user-select:none;}
+    button:active{transform:scale(0.985);}
+    .row{display:flex; gap:10px;}
+    .col{flex:1;}
+    .card{background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03)); border:1px solid rgba(255,255,255,.10); border-radius:16px; padding:12px; margin-bottom:10px;}
+    .title{font-weight:700; letter-spacing:.2px; margin:0 0 8px; font-size:14px;}
+    .muted{color:var(--muted); font-size:12px; line-height:1.35;}
+    .big{font-size:18px; font-weight:800;}
+    .hr{height:1px; background:rgba(255,255,255,.08); margin:10px 0;}
+    .battle{
+      position:relative; overflow:hidden;
+      height:280px; border-radius:18px;
+      background:radial-gradient(120% 90% at 50% 20%, rgba(122,167,255,.18), rgba(0,0,0,0)),
+                 linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.015));
+      border:1px solid rgba(255,255,255,.10);
+    }
+    canvas{display:block; width:100%; height:100%;}
+    .hud{position:absolute; inset:10px 10px auto 10px; display:flex; gap:8px; flex-wrap:wrap;}
+    .hud .chip{backdrop-filter: blur(8px);}
+    .toast{
+      position:fixed; left:50%; transform:translateX(-50%);
+      bottom:92px; background:rgba(15,22,38,.92); border:1px solid rgba(255,255,255,.12);
+      padding:10px 12px; border-radius:14px; font-size:13px; opacity:0; pointer-events:none;
+      transition:opacity .2s;
+      max-width:92vw;
+    }
+    .toast.show{opacity:1;}
+    .bottombar{
+      position:fixed; left:0; right:0; bottom:0; padding:10px 12px calc(10px + env(safe-area-inset-bottom));
+      background:rgba(9,12,20,.82); border-top:1px solid rgba(255,255,255,.10);
+      backdrop-filter: blur(10px);
+    }
+    .bottombar .row{max-width:520px; margin:0 auto;}
+    .btnPrimary{background:linear-gradient(180deg, rgba(122,167,255,.28), rgba(122,167,255,.12)); border-color:rgba(122,167,255,.35);}
+    .btnGood{background:linear-gradient(180deg, rgba(57,217,138,.22), rgba(57,217,138,.10)); border-color:rgba(57,217,138,.35);}
+    .btnWarn{background:linear-gradient(180deg, rgba(255,204,102,.22), rgba(255,204,102,.10)); border-color:rgba(255,204,102,.35);}
+    .btnBad{background:linear-gradient(180deg, rgba(255,93,93,.18), rgba(255,93,93,.09)); border-color:rgba(255,93,93,.30);}
+    .pill{display:inline-flex; gap:6px; align-items:center; padding:4px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.10); background:rgba(255,255,255,.05); font-size:12px;}
+    .kpi{display:flex; justify-content:space-between; gap:10px; font-size:12px; color:var(--muted);}
+    .kpi b{color:var(--txt); font-weight:800;}
+    .grid2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+    .small{font-size:12px;}
+    .flash{position:absolute; inset:0; background:rgba(255,255,255,.0); pointer-events:none;}
+    .flash.on{animation:flash .12s ease;}
+    @keyframes flash{0%{background:rgba(255,255,255,.0)} 40%{background:rgba(255,255,255,.14)} 100%{background:rgba(255,255,255,.0)}}
+    .shake{animation:shake .18s linear;}
+    @keyframes shake{
+      0%{transform:translate(0,0)} 20%{transform:translate(1px,-1px)}
+      40%{transform:translate(-2px,1px)} 60%{transform:translate(2px,2px)}
+      80%{transform:translate(-1px,1px)} 100%{transform:translate(0,0)}
+    }
+    .tag{font-size:11px; color:var(--muted);}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="chip"><span id="t_game">Robot Idle Shooter</span> <span class="tag">MVP</span></div>
+      <div class="row" style="gap:8px; align-items:center;">
+        <select id="langSel" aria-label="Language">
+          <option value="en">English</option>
+          <option value="ko">한국어</option>
+          <option value="zh">中文</option>
+        </select>
+        <button id="btnSave" class="btnPrimary"><span id="t_save">Save</span></button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="battle" id="battleBox">
+        <canvas id="cv" width="520" height="280"></canvas>
+        <div class="flash" id="flash"></div>
+        <div class="hud">
+          <div class="chip"><span id="t_stage">Stage</span>: <b id="stageTxt">1</b></div>
+          <div class="chip"><span id="t_gold">Gold</span>: <b id="goldTxt">0</b></div>
+          <div class="chip"><span id="t_gems">Gems</span>: <b id="gemsTxt">0</b></div>
+          <div class="chip"><span id="t_dps">DPS</span>: <b id="dpsTxt">0</b></div>
+          <div class="chip"><span id="t_pet">Pet</span>: <b id="petTxt">EMP Drone</b></div>
+        </div>
+      </div>
+      <div class="hr"></div>
+      <div class="kpi">
+        <div><span id="t_robot">Robot</span>: <b id="robotTxt">Scrap Bot (C)</b></div>
+        <div><span id="t_weapon">Weapon</span>: <b id="weaponTxt">SMG</b></div>
+      </div>
+      <div class="kpi" style="margin-top:6px;">
+        <div><span id="t_offline">Offline bonus</span>: <b id="offlineTxt">0</b></div>
+        <div><span id="t_pity">Pity</span>: <b id="pityTxt">0</b></div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="title" id="t_upgrades">Upgrades</div>
+        <div class="muted" id="t_upgrades_desc">Tap upgrades to feel instant power. One-hand friendly.</div>
+        <div class="hr"></div>
+        <div class="row">
+          <button class="col btnGood" id="btnAtk"></button>
+          <button class="col btnGood" id="btnSpd"></button>
+        </div>
+        <div class="row" style="margin-top:10px;">
+          <button class="col btnGood" id="btnCrit"></button>
+          <button class="col btnWarn" id="btnMissile"></button>
+        </div>
+        <div class="muted small" style="margin-top:10px;" id="t_tip_hitstop"></div>
+      </div>
+
+      <div class="card">
+        <div class="title" id="t_robot_lab">Robot Lab</div>
+        <div class="muted" id="t_robot_lab_desc">Combine frames for a small chance to jump to higher rarity.</div>
+        <div class="hr"></div>
+        <div class="row">
+          <button class="col btnPrimary" id="btnCraft"></button>
+          <button class="col btnPrimary" id="btnCombine"></button>
+        </div>
+        <div class="hr"></div>
+        <div class="row">
+          <button class="col btnWarn" id="btnPetSkill"></button>
+          <button class="col btnBad" id="btnReset"></button>
+        </div>
+        <div class="muted small" style="margin-top:10px;">
+          <span id="t_frames">Frames</span>: <b id="framesTxt">0</b> ·
+          <span id="t_parts">Parts</span>: <b id="partsTxt">0</b>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="title" id="t_micro">Micro-Payments (optional)</div>
+      <div class="muted" id="t_micro_desc">
+        This MVP uses Stripe Payment Links (no backend). Replace the links with yours.
+      </div>
+      <div class="hr"></div>
+      <div class="row">
+        <button class="col btnPrimary" id="btnBuySmall"></button>
+        <button class="col btnPrimary" id="btnBuyPass"></button>
+      </div>
+      <div class="muted small" style="margin-top:10px;" id="t_micro_note"></div>
+    </div>
+
+    <div class="card">
+      <div class="title" id="t_how">How to play</div>
+      <div class="muted" id="t_how_desc"></div>
+    </div>
+  </div>
+
+  <div class="bottombar">
+    <div class="row">
+      <button class="col btnGood" id="bbAtk"></button>
+      <button class="col btnGood" id="bbCraft"></button>
+      <button class="col btnWarn" id="bbPet"></button>
+      <button class="col btnPrimary" id="bbBuy"></button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">…</div>
+
+<script>
+(() => {
+  // =========================
+  // i18n
+  // =========================
+  const I18N = {
+    en: {
+      game:"Robot Idle Shooter",
+      save:"Save",
+      stage:"Stage",
+      gold:"Gold",
+      gems:"Gems",
+      dps:"DPS",
+      pet:"Pet",
+      robot:"Robot",
+      weapon:"Weapon",
+      offline:"Offline bonus",
+      pity:"Pity",
+      upgrades:"Upgrades",
+      upgrades_desc:"Tap upgrades to feel instant power. One-hand friendly.",
+      robot_lab:"Robot Lab",
+      robot_lab_desc:"Craft frames and combine them for a small chance to jump to higher rarity.",
+      frames:"Frames",
+      parts:"Parts",
+      micro:"Micro-Payments (optional)",
+      micro_desc:"This MVP uses Stripe Payment Links (no backend). Replace the links with yours.",
+      micro_note:"Tip: Create Stripe Payment Links for $1.99 / $4.99 and paste URLs in the config.",
+      how:"How to play",
+      how_desc:"Auto-fight runs nonstop. Use upgrades to increase DPS. Craft frames using Parts, then Combine 5 frames to try for a higher robot. Use Pet EMP for big impact. Save anytime.",
+      btn_atk:(lvl,cost)=>`ATK + (Lv ${lvl})\nCost: ${cost}G`,
+      btn_spd:(lvl,cost)=>`Fire Rate + (Lv ${lvl})\nCost: ${cost}G`,
+      btn_crit:(lvl,cost)=>`Crit + (Lv ${lvl})\nCost: ${cost}G`,
+      btn_missile:(lvl,cost)=>`Missile + (Lv ${lvl})\nCost: ${cost}G`,
+      tip_hitstop:"Critical hits trigger hit-stop + camera shake for impact.",
+      craft:(cost)=>`Craft Frame\nCost: ${cost} Parts`,
+      combine:"Combine x5\nChance up + Pity",
+      petSkill:(cd)=>`PET EMP\nCD: ${cd}s`,
+      reset:"Reset",
+      toast_saved:"Saved.",
+      toast_offline:(sec,g,p)=>`Offline: ${sec}s → +${g}G, +${p} Parts`,
+      toast_need_frames:"Need 5 frames.",
+      toast_need_parts:"Not enough parts.",
+      toast_combined:(name)=>`New Robot: ${name}`,
+      toast_nojump:"Combine failed to jump (pity increased).",
+      toast_pet:"EMP! Enemies slowed & stunned!",
+      buy_small:"Buy 200 Gems ($1.99)",
+      buy_pass:"Buy 30-Day Pass ($4.99)",
+      bb_atk:"Upgrade",
+      bb_craft:"Robots",
+      bb_pet:"Pet EMP",
+      bb_buy:"Shop",
+      confirm_reset:"Reset all progress?",
+    },
+    ko: {
+      game:"로봇 방치형 슈터",
+      save:"저장",
+      stage:"스테이지",
+      gold:"골드",
+      gems:"젬",
+      dps:"초당딜",
+      pet:"펫",
+      robot:"로봇",
+      weapon:"무기",
+      offline:"오프라인 보너스",
+      pity:"보정",
+      upgrades:"강화",
+      upgrades_desc:"강화 버튼만 눌러도 바로 강해지는 느낌을 만들었어.",
+      robot_lab:"로봇 연구소",
+      robot_lab_desc:"부품으로 프레임을 만들고, 5개 합성해서 낮은 확률로 상위 등급 점프!",
+      frames:"프레임",
+      parts:"부품",
+      micro:"소액 결제(옵션)",
+      micro_desc:"이 MVP는 Stripe Payment Link(백엔드 없이 가능) 버튼을 사용해.",
+      micro_note:"팁: Stripe에서 $1.99 / $4.99 결제 링크 만들고, 아래 설정에 URL만 붙이면 끝.",
+      how:"플레이 방법",
+      how_desc:"자동 전투가 계속 돌아가. 강화로 DPS를 올리고, 부품으로 프레임을 만든 뒤 5개 합성해서 더 좋은 로봇을 노려봐. 펫 EMP는 임팩트 담당!",
+      btn_atk:(lvl,cost)=>`공격력 + (Lv ${lvl})\n비용: ${cost}G`,
+      btn_spd:(lvl,cost)=>`연사 + (Lv ${lvl})\n비용: ${cost}G`,
+      btn_crit:(lvl,cost)=>`치명타 + (Lv ${lvl})\n비용: ${cost}G`,
+      btn_missile:(lvl,cost)=>`미사일 + (Lv ${lvl})\n비용: ${cost}G`,
+      tip_hitstop:"치명타 때 히트스톱 + 카메라 흔들림으로 타격감을 줘.",
+      craft:(cost)=>`프레임 제작\n비용: ${cost} 부품`,
+      combine:"합성 x5\n확률 + 보정",
+      petSkill:(cd)=>`펫 EMP\n쿨: ${cd}초`,
+      reset:"리셋",
+      toast_saved:"저장했어.",
+      toast_offline:(sec,g,p)=>`오프라인: ${sec}초 → +${g}G, +${p} 부품`,
+      toast_need_frames:"프레임 5개가 필요해.",
+      toast_need_parts:"부품이 부족해.",
+      toast_combined:(name)=>`새 로봇 획득: ${name}`,
+      toast_nojump:"점프 실패(보정 상승).",
+      toast_pet:"EMP 발동! 적이 느려지고 잠깐 멈춰!",
+      buy_small:"젬 200개 ($1.99)",
+      buy_pass:"30일 패스 ($4.99)",
+      bb_atk:"강화",
+      bb_craft:"로봇",
+      bb_pet:"펫 EMP",
+      bb_buy:"상점",
+      confirm_reset:"정말로 진행 상황을 모두 지울까?",
+    },
+    zh: {
+      game:"机器人放置射击",
+      save:"保存",
+      stage:"关卡",
+      gold:"金币",
+      gems:"宝石",
+      dps:"DPS",
+      pet:"宠物",
+      robot:"机器人",
+      weapon:"武器",
+      offline:"离线奖励",
+      pity:"保底",
+      upgrades:"强化",
+      upgrades_desc:"点一下就变强，单手竖屏友好。",
+      robot_lab:"机器人实验室",
+      robot_lab_desc:"用零件制作机体，5个合成，小概率跳更高稀有度（带保底）。",
+      frames:"机体",
+      parts:"零件",
+      micro:"小额付费（可选）",
+      micro_desc:"此MVP使用 Stripe Payment Link（无需后端）。替换成你的链接即可。",
+      micro_note:"提示：在Stripe创建$1.99/$4.99支付链接，把URL填进配置即可。",
+      how:"怎么玩",
+      how_desc:"自动战斗一直进行。通过强化提升DPS。用零件制作机体，5个合成抽更强机器人。宠物EMP负责大场面冲击！随时保存。",
+      btn_atk:(lvl,cost)=>`攻击 + (Lv ${lvl})\n花费: ${cost}G`,
+      btn_spd:(lvl,cost)=>`射速 + (Lv ${lvl})\n花费: ${cost}G`,
+      btn_crit:(lvl,cost)=>`暴击 + (Lv ${lvl})\n花费: ${cost}G`,
+      btn_missile:(lvl,cost)=>`导弹 + (Lv ${lvl})\n花费: ${cost}G`,
+      tip_hitstop:"暴击会触发短暂停顿+镜头震动，提升打击感。",
+      craft:(cost)=>`制作机体\n花费: ${cost} 零件`,
+      combine:"合成x5\n概率+保底",
+      petSkill:(cd)=>`宠物 EMP\n冷却: ${cd}s`,
+      reset:"重置",
+      toast_saved:"已保存。",
+      toast_offline:(sec,g,p)=>`离线: ${sec}s → +${g}G, +${p} 零件`,
+      toast_need_frames:"需要5个机体。",
+      toast_need_parts:"零件不足。",
+      toast_combined:(name)=>`获得新机器人: ${name}`,
+      toast_nojump:"未跳阶（保底增加）。",
+      toast_pet:"EMP！敌人减速并短暂眩晕！",
+      buy_small:"购买200宝石（$1.99）",
+      buy_pass:"购买30天通行证（$4.99）",
+      bb_atk:"强化",
+      bb_craft:"机器人",
+      bb_pet:"宠物EMP",
+      bb_buy:"商店",
+      confirm_reset:"确定要重置所有进度吗？",
+    }
+  };
+
+  // =========================
+  // Config (replace Stripe links)
+  // =========================
+  const CFG = {
+    STRIPE_PAYMENT_LINK_SMALL: "https://example.com/replace-with-your-stripe-payment-link-1-99",
+    STRIPE_PAYMENT_LINK_PASS:  "https://example.com/replace-with-your-stripe-payment-link-4-99",
+    // Simulated gems given in MVP when you "buy" (since no real webhook here).
+    // In real monetization: after successful Stripe payment, grant gems via server/webhook + account.
+    SIM_BUY_SMALL_GEMS: 200,
+    SIM_BUY_PASS_GEMS: 600,
+    MAX_OFFLINE_SECONDS: 8*60*60, // cap 8 hours
+  };
+
+  // =========================
+  // State
+  // =========================
+  const RARITIES = ["C","B","A","S","SS"];
+  const ROBOTS = {
+    C: ["Scrap Bot", "Bolt Buddy", "Tin Runner"],
+    B: ["Rifle Raptor", "Gear Fox", "Arc Pup"],
+    A: ["Rail Lynx", "Pulse Panda", "Nova Kit"],
+    S: ["Titan Cub", "Vortex Bunny", "Aegis Cat"],
+    SS:["Omega Dragon", "Solar Whale", "Void Phoenix"]
+  };
+  const WEAPON_BY_R = { C:"SMG", B:"AR", A:"Railgun", S:"Missile Cannon", SS:"Orbital Lance" };
+
+  const defaultState = () => ({
+    lang: "en",
+    stage: 1,
+    gold: 0,
+    gems: 0,
+    parts: 0,
+    frames: 0,
+
+    atkLv: 0,
+    spdLv: 0,
+    critLv: 0,
+    missileLv: 0,
+
+    // Robot rarity & name
+    robotR: "C",
+    robotName: "Scrap Bot",
+
+    // Combat progression
+    enemyMaxHp: 40,
+    enemyHp: 40,
+    bossEvery: 10,
+
+    // Combine system
+    pity: 0, // increases chance each fail
+    lastSeenAt: Date.now(),
+
+    // Pet EMP
+    petName: "EMP Drone",
+    empCd: 18,
+    empReadyAt: 0,
+    empActiveUntil: 0,
+  });
+
+  let S = load() || defaultState();
+
+  // Offline rewards
+  applyOfflineRewards();
+
+  // =========================
+  // UI bindings
+  // =========================
+  const $ = (id) => document.getElementById(id);
+  const toastEl = $("toast");
+  const battleBox = $("battleBox");
+  const flashEl = $("flash");
+  const cv = $("cv");
+  const ctx = cv.getContext("2d");
+
+  // Buttons
+  const btnAtk = $("btnAtk"), btnSpd = $("btnSpd"), btnCrit = $("btnCrit"), btnMissile = $("btnMissile");
+  const btnCraft = $("btnCraft"), btnCombine = $("btnCombine"), btnPetSkill = $("btnPetSkill"), btnReset = $("btnReset");
+  const btnSave = $("btnSave");
+  const btnBuySmall = $("btnBuySmall"), btnBuyPass = $("btnBuyPass");
+  const bbAtk = $("bbAtk"), bbCraft = $("bbCraft"), bbPet = $("bbPet"), bbBuy = $("bbBuy");
+  const langSel = $("langSel");
+
+  langSel.value = S.lang;
+  langSel.addEventListener("change", () => { S.lang = langSel.value; renderText(); render(); save(); });
+
+  btnSave.addEventListener("click", () => { save(); toast(t().toast_saved); });
+  btnReset.addEventListener("click", () => {
+    if (!confirm(t().confirm_reset)) return;
+    S = defaultState();
+    langSel.value = S.lang;
+    save();
+    renderText(); render();
+    toast("Reset.");
+  });
+
+  // Upgrade handlers
+  btnAtk.addEventListener("click", () => buyUpgrade("atkLv"));
+  btnSpd.addEventListener("click", () => buyUpgrade("spdLv"));
+  btnCrit.addEventListener("click", () => buyUpgrade("critLv"));
+  btnMissile.addEventListener("click", () => buyUpgrade("missileLv"));
+
+  // Robot lab
+  btnCraft.addEventListener("click", craftFrame);
+  btnCombine.addEventListener("click", combineFrames);
+
+  // Pet skill
+  btnPetSkill.addEventListener("click", tryEMP);
+
+  // Bottom bar quick actions
+  bbAtk.addEventListener("click", () => { buyUpgrade("atkLv"); });
+  bbCraft.addEventListener("click", () => { craftFrame(); });
+  bbPet.addEventListener("click", () => { tryEMP(); });
+  bbBuy.addEventListener("click", () => {
+    // Scroll to shop card
+    window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+  });
+
+  // Shop buttons (Payment Link open + simulated grant)
+  btnBuySmall.addEventListener("click", () => openStripe("small"));
+  btnBuyPass.addEventListener("click", () => openStripe("pass"));
+
+  // =========================
+  // Text render (i18n)
+  // =========================
+  function t(){ return I18N[S.lang] || I18N.en; }
+
+  function renderText(){
+    $("t_game").textContent = t().game;
+    $("t_save").textContent = t().save;
+    $("t_stage").textContent = t().stage;
+    $("t_gold").textContent = t().gold;
+    $("t_gems").textContent = t().gems;
+    $("t_dps").textContent = t().dps;
+    $("t_pet").textContent = t().pet;
+    $("t_robot").textContent = t().robot;
+    $("t_weapon").textContent = t().weapon;
+    $("t_offline").textContent = t().offline;
+    $("t_pity").textContent = t().pity;
+
+    $("t_upgrades").textContent = t().upgrades;
+    $("t_upgrades_desc").textContent = t().upgrades_desc;
+    $("t_robot_lab").textContent = t().robot_lab;
+    $("t_robot_lab_desc").textContent = t().robot_lab_desc;
+    $("t_frames").textContent = t().frames;
+    $("t_parts").textContent = t().parts;
+
+    $("t_micro").textContent = t().micro;
+    $("t_micro_desc").textContent = t().micro_desc;
+    $("t_micro_note").textContent = t().micro_note;
+
+    $("t_how").textContent = t().how;
+    $("t_how_desc").textContent = t().how_desc;
+
+    $("t_tip_hitstop").textContent = t().tip_hitstop;
+
+    btnBuySmall.textContent = t().buy_small;
+    btnBuyPass.textContent  = t().buy_pass;
+
+    bbAtk.textContent = t().bb_atk;
+    bbCraft.textContent = t().bb_craft;
+    bbPet.textContent = t().bb_pet;
+    bbBuy.textContent = t().bb_buy;
+  }
+
+  // =========================
+  // Economy & Combat
+  // =========================
+  function upgradeCost(key){
+    const lv = S[key];
+    // Cheap early, exponential later
+    const base = { atkLv: 12, spdLv: 18, critLv: 22, missileLv: 28 }[key];
+    return Math.floor(base * Math.pow(1.18, lv) + lv*4);
+  }
+
+  function buyUpgrade(key){
+    const cost = upgradeCost(key);
+    if (S.gold < cost) { shake(); return; }
+    S.gold -= cost;
+    S[key] += 1;
+    // Small dopamine: immediate enemy HP tick
+    hitFlash();
+    if (Math.random() < 0.25) microHitStop();
+    render();
+    save();
+  }
+
+  function calcStats(){
+    // Base by rarity
+    const rIndex = RARITIES.indexOf(S.robotR);
+    const rarityMult = 1 + rIndex*0.55;
+
+    const atk = (6 + S.atkLv*1.6) * rarityMult;
+    const fireRate = Math.min(9, 2.2 + S.spdLv*0.10 + rIndex*0.10); // shots/sec
+    const critChance = Math.min(0.35, 0.04 + S.critLv*0.008 + rIndex*0.01);
+    const critMult = 1.7 + rIndex*0.25;
+    const missileRate = 0.015 + S.missileLv*0.004 + rIndex*0.002; // per shot chance
+    const missileDmg = (18 + S.missileLv*3.2) * (1.0 + rIndex*0.55);
+
+    // Pet EMP debuff
+    const now = Date.now();
+    const empActive = now < S.empActiveUntil;
+    const enemySlow = empActive ? 0.55 : 1.0;
+    const stun = empActive ? 0.25 : 0.0;
+
+    // DPS estimate (for UI)
+    const avgCrit = 1 + critChance*(critMult-1);
+    const dps = atk * fireRate * avgCrit + missileDmg * (fireRate * missileRate);
+    return { atk, fireRate, critChance, critMult, missileRate, missileDmg, dps, enemySlow, stun, empActive };
+  }
+
+  function enemyHpForStage(stage){
+    const isBoss = (stage % S.bossEvery === 0);
+    const base = 36 * Math.pow(1.18, stage-1);
+    return Math.floor(base * (isBoss ? 4.5 : 1.0));
+  }
+
+  // Combine mechanics
+  function craftFrameCost(){
+    // in parts
+    return Math.floor(6 * Math.pow(1.12, Math.floor(S.stage/6)));
+  }
+
+  function craftFrame(){
+    const cost = craftFrameCost();
+    if (S.parts < cost) { toast(t().toast_need_parts); shake(); return; }
+    S.parts -= cost;
+    S.frames += 1;
+    hitFlash();
+    render(); save();
+  }
+
+  function combineChance(){
+    // Base chance based on current rarity; higher rarity harder
+    // plus pity: +0.8% per fail (capped)
+    const rIndex = RARITIES.indexOf(S.robotR);
+    const base = [0.28, 0.18, 0.12, 0.07, 0.00][rIndex]; // SS can't jump
+    const pityBonus = Math.min(0.18, S.pity * 0.008);
+    return Math.min(0.42, base + pityBonus);
+  }
+
+  function combineFrames(){
+    if (S.frames < 5) { toast(t().toast_need_frames); shake(); return; }
+    S.frames -= 5;
+
+    const rIndex = RARITIES.indexOf(S.robotR);
+    if (rIndex >= RARITIES.length-1) {
+      // already SS
+      hitFlash();
+      toast(t().toast_nojump);
+      render(); save();
+      return;
+    }
+
+    const chance = combineChance();
+    const roll = Math.random();
+
+    // Small chance for double jump (hype)
+    const doubleJumpChance = Math.max(0, (chance * 0.18) - 0.01);
+
+    if (roll < chance) {
+      let jump = 1;
+      if (Math.random() < doubleJumpChance && rIndex + 2 < RARITIES.length) jump = 2;
+
+      const newR = RARITIES[rIndex + jump];
+      S.robotR = newR;
+      S.robotName = pick(ROBOTS[newR]);
+      S.pity = 0;
+
+      // Reward: gems for excitement
+      S.gems += (jump === 2 ? 25 : 10);
+      bigImpact();
+      toast(t().toast_combined(`${S.robotName} (${S.robotR})`));
+    } else {
+      S.pity += 1;
+      microHitStop();
+      toast(t().toast_nojump);
+    }
+
+    render(); save();
+  }
+
+  // Pet EMP
+  function tryEMP(){
+    const now = Date.now();
+    if (now < S.empReadyAt) { shake(); return; }
+    S.empActiveUntil = now + 4200; // 4.2s active
+    S.empReadyAt = now + S.empCd*1000;
+    bigImpact();
+    toast(t().toast_pet);
+    render(); save();
+  }
+
+  // =========================
+  // Payments (Payment Link + simulated grant)
+  // =========================
+  function openStripe(which){
+    // For MVP testing: if link not replaced, just simulate.
+    let url = which === "small" ? CFG.STRIPE_PAYMENT_LINK_SMALL : CFG.STRIPE_PAYMENT_LINK_PASS;
+    const isPlaceholder = url.includes("example.com/replace-with-your-stripe-payment-link");
+    if (!isPlaceholder) {
+      // Open Stripe Checkout/Payment Link in new tab
+      window.open(url, "_blank");
+    }
+    // Simulated purchase (since we don't have webhook verification here)
+    const grant = which === "small" ? CFG.SIM_BUY_SMALL_GEMS : CFG.SIM_BUY_PASS_GEMS;
+    S.gems += grant;
+    toast(`+${grant} Gems (simulated)`);
+    render(); save();
+  }
+
+  // =========================
+  // Offline rewards
+  // =========================
+  function applyOfflineRewards(){
+    const now = Date.now();
+    const last = S.lastSeenAt || now;
+    let deltaSec = Math.floor((now - last) / 1000);
+    if (deltaSec <= 8) { S.lastSeenAt = now; return; }
+    deltaSec = Math.min(deltaSec, CFG.MAX_OFFLINE_SECONDS);
+
+    const stats = calcStats();
+    // Conservative offline: give based on DPS, but capped
+    const goldGain = Math.floor(deltaSec * (2 + stats.dps * 0.08));
+    const partsGain = Math.floor(deltaSec * (0.22 + (S.stage*0.004)));
+
+    S.gold += goldGain;
+    S.parts += partsGain;
+    S.lastSeenAt = now;
+
+    // Show toast after UI binds
+    setTimeout(() => toast(t().toast_offline(deltaSec, goldGain, partsGain)), 250);
+  }
+
+  window.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      S.lastSeenAt = Date.now();
+      save();
+    } else {
+      applyOfflineRewards();
+      render();
+    }
+  });
+
+  window.addEventListener("beforeunload", () => {
+    S.lastSeenAt = Date.now();
+    save();
+  });
+
+  // =========================
+  // Rendering
+  // =========================
+  function render(){
+    const stats = calcStats();
+
+    // Enemy progression
+    // Ensure enemy HP is valid for stage
+    const maxHp = enemyHpForStage(S.stage);
+    if (!S.enemyMaxHp || S.enemyMaxHp !== maxHp) {
+      S.enemyMaxHp = maxHp;
+      S.enemyHp = Math.min(S.enemyHp || maxHp, maxHp);
+      if (S.enemyHp <= 0) S.enemyHp = maxHp;
+    }
+
+    // UI numbers
+    $("stageTxt").textContent = S.stage;
+    $("goldTxt").textContent = fmt(S.gold);
+    $("gemsTxt").textContent = fmt(S.gems);
+    $("dpsTxt").textContent = fmt(Math.floor(stats.dps));
+    $("petTxt").textContent = S.petName;
+    $("robotTxt").textContent = `${S.robotName} (${S.robotR})`;
+    $("weaponTxt").textContent = WEAPON_BY_R[S.robotR] || "SMG";
+    $("pityTxt").textContent = S.pity;
+    $("framesTxt").textContent = S.frames;
+    $("partsTxt").textContent = S.parts;
+
+    const offlineRate = `${Math.floor(2 + stats.dps*0.08)}G/s`;
+    $("offlineTxt").textContent = offlineRate;
+
+    // Buttons
+    btnAtk.textContent = t().btn_atk(S.atkLv, upgradeCost("atkLv"));
+    btnSpd.textContent = t().btn_spd(S.spdLv, upgradeCost("spdLv"));
+    btnCrit.textContent = t().btn_crit(S.critLv, upgradeCost("critLv"));
+    btnMissile.textContent = t().btn_missile(S.missileLv, upgradeCost("missileLv"));
+    btnCraft.textContent = t().craft(craftFrameCost());
+    btnCombine.textContent = t().combine;
+
+    const cdLeft = Math.max(0, Math.ceil((S.empReadyAt - Date.now())/1000));
+    btnPetSkill.textContent = cdLeft > 0 ? `${t().petSkill(S.empCd)} (${cdLeft})` : t().petSkill(S.empCd);
+
+    // Draw battle scene
+    drawBattle(stats);
+  }
+
+  function drawBattle(stats){
+    // scale canvas to device pixel ratio for crispness
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    const rect = cv.getBoundingClientRect();
+    const w = Math.floor(rect.width * dpr);
+    const h = Math.floor(rect.height * dpr);
+    if (cv.width !== w || cv.height !== h){
+      cv.width = w; cv.height = h;
+    }
+
+    ctx.clearRect(0,0,w,h);
+
+    // Background grid
+    ctx.save();
+    ctx.globalAlpha = 0.18;
+    ctx.strokeStyle = "#86a9ff";
+    for (let x=0; x<w; x+=36*dpr){
+      ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke();
+    }
+    for (let y=0; y<h; y+=36*dpr){
+      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke();
+    }
+    ctx.restore();
+
+    // Entities positions
+    const playerX = w*0.23, playerY = h*0.58;
+    const enemyX  = w*0.78, enemyY  = h*0.56;
+
+    // Enemy HP bar
+    const maxHp = S.enemyMaxHp || 1;
+    const hp = Math.max(0, S.enemyHp);
+    const barW = w*0.76, barH = 10*dpr, barX = w*0.12, barY = h*0.10;
+    ctx.fillStyle = "rgba(255,255,255,.10)";
+    roundRect(ctx, barX, barY, barW, barH, 999); ctx.fill();
+    ctx.fillStyle = "rgba(255,93,93,.70)";
+    roundRect(ctx, barX, barY, barW*(hp/maxHp), barH, 999); ctx.fill();
+
+    // Player robot
+    drawRobot(playerX, playerY, 1, S.robotR, true);
+
+    // Enemy robot (scaled for boss)
+    const isBoss = (S.stage % S.bossEvery === 0);
+    drawRobot(enemyX, enemyY, isBoss ? 1.28 : 1.10, isBoss ? "S" : "B", false);
+
+    // EMP overlay
+    if (stats.empActive){
+      ctx.save();
+      ctx.globalAlpha = 0.16;
+      ctx.fillStyle = "#7aa7ff";
+      ctx.beginPath();
+      ctx.arc(w*0.5, h*0.55, Math.min(w,h)*0.42, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Projectiles (simple particles)
+    drawParticles(w,h,dpr);
+
+    // Labels
+    ctx.save();
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = "rgba(255,255,255,.85)";
+    ctx.font = `${Math.floor(12*dpr)}px system-ui`;
+    ctx.fillText(`${WEAPON_BY_R[S.robotR]}  |  ${S.robotName}`, Math.floor(w*0.06), Math.floor(h*0.92));
+    ctx.restore();
+  }
+
+  function drawRobot(x,y,scale,rarity,isPlayer){
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    const size = 34*dpr*scale;
+
+    // body
+    ctx.save();
+    ctx.translate(x,y);
+    if (!isPlayer) ctx.scale(-1,1);
+
+    const col = rarityColor(rarity);
+    ctx.fillStyle = col.body;
+    roundRect(ctx, -size*0.6, -size*0.5, size*1.2, size, 10*dpr); ctx.fill();
+
+    // head
+    ctx.fillStyle = col.head;
+    roundRect(ctx, -size*0.35, -size*0.95, size*0.7, size*0.55, 10*dpr); ctx.fill();
+
+    // eye
+    ctx.fillStyle = "rgba(255,255,255,.85)";
+    roundRect(ctx, -size*0.15, -size*0.78, size*0.3, size*0.16, 999); ctx.fill();
+    ctx.fillStyle = "rgba(0,0,0,.55)";
+    roundRect(ctx, -size*0.08, -size*0.76, size*0.16, size*0.12, 999); ctx.fill();
+
+    // weapon
+    ctx.fillStyle = "rgba(255,255,255,.14)";
+    roundRect(ctx, size*0.35, -size*0.25, size*0.6, size*0.18, 999); ctx.fill();
+
+    // legs
+    ctx.fillStyle = "rgba(0,0,0,.25)";
+    roundRect(ctx, -size*0.5, size*0.42, size*0.35, size*0.18, 8*dpr); ctx.fill();
+    roundRect(ctx,  size*0.15, size*0.42, size*0.35, size*0.18, 8*dpr); ctx.fill();
+
+    // outline glow
+    ctx.globalAlpha = 0.28;
+    ctx.strokeStyle = col.glow;
+    ctx.lineWidth = 3*dpr;
+    roundRect(ctx, -size*0.6, -size*0.95, size*1.55, size*1.45, 14*dpr); ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function rarityColor(r){
+    const map = {
+      C:{body:"rgba(255,255,255,.16)", head:"rgba(255,255,255,.12)", glow:"rgba(255,255,255,.25)"},
+      B:{body:"rgba(122,167,255,.22)", head:"rgba(122,167,255,.16)", glow:"rgba(122,167,255,.35)"},
+      A:{body:"rgba(57,217,138,.22)", head:"rgba(57,217,138,.16)", glow:"rgba(57,217,138,.35)"},
+      S:{body:"rgba(255,204,102,.22)", head:"rgba(255,204,102,.16)", glow:"rgba(255,204,102,.35)"},
+      SS:{body:"rgba(255,93,93,.18)", head:"rgba(255,93,93,.12)", glow:"rgba(255,93,93,.30)"},
+    };
+    return map[r] || map.C;
+  }
+
+  function roundRect(ctx, x, y, w, h, r){
+    r = Math.min(r, w/2, h/2);
+    ctx.beginPath();
+    ctx.moveTo(x+r, y);
+    ctx.arcTo(x+w, y, x+w, y+h, r);
+    ctx.arcTo(x+w, y+h, x, y+h, r);
+    ctx.arcTo(x, y+h, x, y, r);
+    ctx.arcTo(x, y, x+w, y, r);
+    ctx.closePath();
+  }
+
+  // =========================
+  // Simple combat loop + particles
+  // =========================
+  const particles = [];
+  let acc = 0;
+  let last = performance.now();
+
+  function loop(ts){
+    const dt = Math.min(0.05, (ts - last)/1000);
+    last = ts;
+
+    const stats = calcStats();
+
+    // enemy effect: slow + occasional stun
+    const slow = stats.enemySlow;
+    const stunned = stats.empActive && (Math.random() < stats.stun*dt);
+
+    // Fire bullets based on fireRate
+    if (!stunned){
+      acc += dt * stats.fireRate;
+      while (acc >= 1){
+        acc -= 1;
+
+        // Bullet hit
+        const isCrit = Math.random() < stats.critChance;
+        const dmg = stats.atk * (isCrit ? stats.critMult : 1.0);
+        dealDamage(dmg, isCrit);
+
+        // Missile proc
+        if (Math.random() < stats.missileRate){
+          dealMissile(stats.missileDmg);
+        }
+      }
+    }
+
+    // Enemy "regeneration" / pacing via slow (visual only)
+    // not needed for MVP
+
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  function dealDamage(dmg, isCrit){
+    S.enemyHp -= dmg;
+
+    // Gold/parts drip
+    const g = Math.max(1, Math.floor(0.6 + dmg*0.08));
+    const p = (Math.random() < 0.22) ? 1 : 0;
+    S.gold += g;
+    S.parts += p;
+
+    // particles
+    spawnParticle(isCrit ? "crit" : "hit", dmg);
+
+    // impact
+    if (isCrit){
+      bigImpact();
+    } else if (Math.random() < 0.10){
+      microHitStop();
+    }
+
+    // kill check
+    if (S.enemyHp <= 0){
+      onEnemyDown();
+    }
+  }
+
+  function dealMissile(dmg){
+    S.enemyHp -= dmg;
+    S.gold += Math.floor(3 + dmg*0.10);
+    S.parts += (Math.random() < 0.60) ? 1 : 0;
+
+    spawnParticle("missile", dmg);
+    bigImpact();
+
+    if (S.enemyHp <= 0) onEnemyDown();
+  }
+
+  function onEnemyDown(){
+    // stage clear reward
+    const clearGold = Math.floor(10 * Math.pow(1.08, S.stage));
+    const clearParts = Math.floor(2 + S.stage*0.12);
+    S.gold += clearGold;
+    S.parts += clearParts;
+
+    S.stage += 1;
+    S.enemyMaxHp = enemyHpForStage(S.stage);
+    S.enemyHp = S.enemyMaxHp;
+
+    // tiny gem chance
+    if (Math.random() < 0.08) S.gems += 1;
+
+    hitFlash();
+    saveThrottled();
+  }
+
+  function spawnParticle(type, dmg){
+    const now = performance.now();
+    particles.push({ type, dmg, born: now, life: type==="missile"?420: (type==="crit"?360:240) });
+    // cap
+    if (particles.length > 24) particles.splice(0, particles.length-24);
+  }
+
+  function drawParticles(w,h,dpr){
+    const now = performance.now();
+    const cx = w*0.62, cy = h*0.48;
+    for (const p of particles){
+      const age = now - p.born;
+      const t = Math.min(1, age/p.life);
+      const y = cy - (30*dpr)*(t);
+      const x = cx + (Math.sin((p.born/120)+t*6)*10*dpr);
+
+      let txt = "";
+      let alpha = 1 - t;
+      if (p.type === "hit"){ txt = `-${Math.floor(p.dmg)}`; ctx.fillStyle = `rgba(255,255,255,${0.70*alpha})`; }
+      if (p.type === "crit"){ txt = `CRIT ${Math.floor(p.dmg)}`; ctx.fillStyle = `rgba(255,204,102,${0.90*alpha})`; }
+      if (p.type === "missile"){ txt = `MISSILE ${Math.floor(p.dmg)}`; ctx.fillStyle = `rgba(255,93,93,${0.90*alpha})`; }
+
+      ctx.font = `${Math.floor((p.type==="crit"||p.type==="missile"?16:13)*dpr)}px system-ui`;
+      ctx.fillText(txt, x, y);
+    }
+    // remove dead
+    for (let i=particles.length-1;i>=0;i--){
+      const p = particles[i];
+      if (now - p.born > p.life) particles.splice(i,1);
+    }
+  }
+
+  // =========================
+  // Impact: shake / flash / hitstop
+  // =========================
+  let stopUntil = 0;
+  function microHitStop(){
+    stopUntil = performance.now() + 55;
+  }
+  function bigImpact(){
+    microHitStop();
+    shake();
+    hitFlash();
+  }
+  function shake(){
+    battleBox.classList.remove("shake");
+    void battleBox.offsetWidth;
+    battleBox.classList.add("shake");
+  }
+  function hitFlash(){
+    flashEl.classList.remove("on");
+    void flashEl.offsetWidth;
+    flashEl.classList.add("on");
+  }
+
+  // “Hitstop” implemented by skipping some frames visually (simple MVP)
+  const _raf = window.requestAnimationFrame;
+  window.requestAnimationFrame = function(cb){
+    return _raf((ts)=>{
+      if (performance.now() < stopUntil){
+        // delay next frame slightly
+        setTimeout(()=>cb(ts), 22);
+      } else {
+        cb(ts);
+      }
+    });
+  };
+
+  // =========================
+  // Save/Load
+  // =========================
+  const KEY = "robot_idle_mvp_v1";
+  function save(){
+    S.lastSeenAt = Date.now();
+    localStorage.setItem(KEY, JSON.stringify(S));
+  }
+  function load(){
+    try{
+      const raw = localStorage.getItem(KEY);
+      if (!raw) return null;
+      const obj = JSON.parse(raw);
+      // Minimal migration
+      return { ...defaultState(), ...obj };
+    }catch(e){ return null; }
+  }
+  let saveTimer = 0;
+  function saveThrottled(){
+    if (saveTimer) return;
+    saveTimer = setTimeout(()=>{ saveTimer=0; save(); }, 650);
+  }
+
+  // =========================
+  // Utils
+  // =========================
+  function fmt(n){
+    n = Math.floor(n);
+    if (n < 1000) return ""+n;
+    if (n < 1e6) return (n/1e3).toFixed(1).replace(/\.0$/,"")+"K";
+    if (n < 1e9) return (n/1e6).toFixed(1).replace(/\.0$/,"")+"M";
+    return (n/1e9).toFixed(1).replace(/\.0$/,"")+"B";
+  }
+  function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+
+  function toast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(toastEl._t);
+    toastEl._t = setTimeout(()=>toastEl.classList.remove("show"), 1700);
+  }
+
+  // Initial render
+  renderText();
+  render();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
